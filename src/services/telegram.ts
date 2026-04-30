@@ -177,7 +177,7 @@ const getWebhookCallback = (): RequestHandler | null => {
 
   if (!webhookPath) return null;
 
-  return Bot.webhookCallback(webhookPath, {
+  return Bot.webhookCallback('/', {
     secretToken: process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN,
   }) as RequestHandler;
 };

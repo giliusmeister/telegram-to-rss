@@ -102,6 +102,37 @@ BOT_TOKEN=123456789:telegram-bot-token
 curl "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo"
 ```
 
+Check the app heartbeat on the webhook path:
+
+```sh
+WEBHOOK_PATH=/telegram/webhook/replace-with-random-path
+curl -i "http://127.0.0.1:4444${WEBHOOK_PATH}"
+```
+
+Smoke-test the local webhook endpoint from the server. If `TELEGRAM_WEBHOOK_SECRET_TOKEN` is set, include the same value in `X-Telegram-Bot-Api-Secret-Token`; otherwise Telegraf rejects the request and Express returns `404`.
+
+```sh
+WEBHOOK_PATH=/telegram/webhook/replace-with-random-path
+WEBHOOK_SECRET=replace-with-random-secret
+
+curl -i -X POST "http://127.0.0.1:4444${WEBHOOK_PATH}" \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: ${WEBHOOK_SECRET}" \
+  -d '{
+    "update_id": 1,
+    "message": {
+      "message_id": 10,
+      "from": { "id": 777000, "is_bot": false, "first_name": "Telegram" },
+      "chat": { "id": -1001234567890, "type": "supergroup", "title": "Discussion" },
+      "date": 1777548641,
+      "is_automatic_forward": true,
+      "forward_from_chat": { "id": -1009876543210, "type": "channel", "username": "my_channel" },
+      "forward_from_message_id": 2,
+      "text": "Test title\nTest body"
+    }
+  }'
+```
+
 For local development, omit `TELEGRAM_WEBHOOK_PATH`; the bot will use long polling.
 
 ## Configuration
