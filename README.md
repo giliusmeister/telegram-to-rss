@@ -108,6 +108,7 @@ The repository also includes helper scripts that read `.env`:
 chmod +x get-webhook.sh set-webhook.sh
 ./set-webhook.sh
 ./get-webhook.sh
+./reset-webhook.sh
 ```
 
 Check the app heartbeat on the webhook path:
@@ -159,6 +160,9 @@ _Note: You need to create separate `.env.{NODE_ENV}` files for each environment(
 |AUTHOR|String|RSS Feed Author Name|
 |WEBSITE_HOST|String|Public URL of the RSS feed host, for example `https://rss.example.com`|
 |RSS_ITEM_LIMIT|Number|Maximum RSS items to keep, defaults to `50`; use `0` to disable the limit|
+|RSS_LANGUAGE|String|RSS feed language code, defaults to `en`; use `ru` for Russian feeds|
+|RSS_ITEMS_FILE_PATH|String|Path to persisted RSS items JSON, defaults to `data/rss-items.json`|
+|RSS_GUID_SECRET|String|Optional HMAC secret for stable non-permalink RSS item GUIDs; defaults to `BOT_TOKEN`|
 
 ## Ubuntu Server Deployment
 
@@ -212,6 +216,9 @@ TELEGRAM_WEBHOOK_SECRET_TOKEN=replace-with-random-secret
 AUTHOR=Your Name
 WEBSITE_HOST=https://rss.example.com
 RSS_ITEM_LIMIT=50
+RSS_LANGUAGE=ru
+RSS_ITEMS_FILE_PATH=data/rss-items.json
+RSS_GUID_SECRET=replace-with-random-secret
 ```
 
 Create `/etc/systemd/system/telegram-to-rss.service`:
@@ -250,6 +257,47 @@ Useful service commands:
 sudo journalctl -u telegram-to-rss -f
 sudo systemctl restart telegram-to-rss
 ```
+
+Example Monit rule for `/etc/monit/conf-enabled/telegram-to-rss`:
+
+```monit
+check host telegram-to-rss with address 127.0.0.1
+  start program = "/usr/bin/systemctl start telegram-to-rss"
+  stop program = "/usr/bin/systemctl stop telegram-to-rss"
+  if failed
+    port 4444
+    protocol http
+    request "/telegram/webhook/replace-with-random-path"
+    status = 200
+    with timeout 10 seconds
+    for 2 cycles
+  then restart
+  if 5 restarts within 5 cycles then timeout
+```
+
+Enable the Monit rule:
+
+```sh
+sudo monit -t
+sudo systemctl reload monit
+sudo monit status telegram-to-rss
+```
+
+Optional Monit check for the public nginx/TLS RSS endpoint:
+
+```monit
+check host telegram-to-rss-public with address rss.example.com
+  if failed
+    port 443
+    protocol https
+    request "/rss.xml"
+    status = 200
+    with timeout 10 seconds
+    for 2 cycles
+  then alert
+```
+
+Use this check to verify the external path through DNS, nginx and TLS. Keep it as `then alert` unless you are sure a failed public endpoint should automatically restart a local service.
 
 Example nginx config for `/etc/nginx/sites-available/telegram-to-rss`:
 

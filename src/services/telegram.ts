@@ -1,3 +1,4 @@
+import { createHmac } from 'crypto';
 import { type Context, Telegraf, Telegram } from 'telegraf';
 import type { RequestHandler } from 'express';
 import type { Message, PhotoSize, Update } from 'telegraf/typings/core/types/typegram';
@@ -152,13 +153,33 @@ const parseNews = (text: string, fallbackTitle: string) => {
 const getMessageText = (message: TelegramPostMessage) =>
   'text' in message ? message.text : message.caption || '';
 
-const getTelegramPermalink = (message: any) => {
+const getTelegramPostIdentity = (message: any) => {
   const username = normalizeTelegramUsername(
     message.forward_from_chat?.username || message.chat?.username || process.env.GROUP_USERNAME,
   );
+  const chatId = message.forward_from_chat?.id || message.chat?.id || process.env.GROUP_ID || username;
   const messageId = message.forward_from_message_id || message.message_id;
 
+  return {
+    messageId,
+    sourceKey: `telegram:${chatId}:${messageId}`,
+    username,
+  };
+};
+
+const getTelegramPermalink = (message: any) => {
+  const { messageId, username } = getTelegramPostIdentity(message);
+
   return `https://t.me/${username}/${messageId}`;
+};
+
+const getTelegramGuid = (message: any) => {
+  const guidSecret =
+    process.env.RSS_GUID_SECRET || process.env.BOT_TOKEN || process.env.GROUP_USERNAME || 'telegram-to-rss';
+  const { sourceKey } = getTelegramPostIdentity(message);
+  const digest = createHmac('sha256', guidSecret).update(sourceKey).digest('hex');
+
+  return `telegram:${digest}`;
 };
 
 const buildDescription = (description: string, imageUrl?: string) =>
@@ -171,7 +192,7 @@ const addMessageToFeed = async (message: TelegramPostMessage, imageUrl?: string)
 
   await Feed.addItem({
     url,
-    guid: url,
+    guid: getTelegramGuid(message),
     date,
     description: buildDescription(parsedNews.description, imageUrl),
     title: parsedNews.title,
@@ -205,10 +226,26 @@ const launch = async () => {
   console.log('[TELEGRAM] Webhook configured at', webhookURL);
 };
 
+Bot.use((ctx: any, next) => {
+  const post = ctx.update.channel_post;
+
+  if (post?.text || post?.photo) {
+    if (String(post.chat.id) !== String(process.env.GROUP_ID)) {
+      console.log('[TELEGRAM] ignored channel_post by GROUP_ID', {
+        got: post.chat.id,
+        expected: process.env.GROUP_ID,
+      });
+      return;
+    }
+
+    return addMessageToFeed(post);
+  }
+
+  return next();
+});
+
 Bot.on('text', (ctx: any) => {
   const message = ctx.message || ctx.channelPost;
-
-  console.log('[TELEGRAM] text update', message);
 
   return withValidation(ctx, () => addMessageToFeed(message));
 });

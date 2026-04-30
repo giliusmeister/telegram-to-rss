@@ -11,6 +11,9 @@ declare namespace NodeJS {
     AUTHOR: string;
     WEBSITE_HOST: string;
     RSS_ITEM_LIMIT?: string;
+    RSS_LANGUAGE?: string;
+    RSS_ITEMS_FILE_PATH?: string;
+    RSS_GUID_SECRET?: string;
 
     // Server
     PORT: string;

@@ -2,6 +2,7 @@ node_modules/
 dist/
 
 public/rss.xml
+data/
 
 .env*
 !.env
