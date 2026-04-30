@@ -1,4 +1,4 @@
-import { type Context, type NarrowedContext, Telegraf, Telegram } from 'telegraf';
+import { type Context, Telegraf, Telegram } from 'telegraf';
 import type { RequestHandler } from 'express';
 import type { Message, PhotoSize, Update } from 'telegraf/typings/core/types/typegram';
 
@@ -12,8 +12,16 @@ const TITLE_MAX_LENGTH = 140;
 const Bot = new Telegraf(process.env.BOT_TOKEN);
 const TelegramClient = new Telegram(process.env.BOT_TOKEN);
 
-type TelegramPostMessage = Update.New & Update.NonChannel & (Message.TextMessage | Message.PhotoMessage);
+type TelegramPostMessage = Update.New & (Message.TextMessage | Message.PhotoMessage);
 type TelegramPostMessageWithForward = TelegramPostMessage & {
+  chat?: {
+    id?: number;
+    type?: string;
+    username?: string;
+  };
+  from?: {
+    first_name?: string;
+  };
   forward_from_chat?: {
     id?: number;
     username?: string;
@@ -52,36 +60,53 @@ const getWebhookURL = () => {
   return `${WEBSITE_HOST.replace(/\/+$/, '')}${webhookPath}`;
 };
 
+const getContextPost = (ctx: Context) =>
+  (ctx as Context & { message?: TelegramPostMessage; channelPost?: TelegramPostMessage }).message ||
+  (ctx as Context & { message?: TelegramPostMessage; channelPost?: TelegramPostMessage }).channelPost;
+
+const isConfiguredChat = (ctx: Context) => {
+  if (!ctx.chat) return false;
+
+  return (
+    ctx.chat.id === +CHAT_ID ||
+    normalizeTelegramUsername('username' in ctx.chat ? ctx.chat.username : undefined) ===
+      normalizeTelegramUsername(CHAT_NAME)
+  );
+};
+
 const isTelegramChannelPost = (message: TelegramPostMessage) => {
   const forwardedMessage = message as TelegramPostMessageWithForward;
   const forwardedUsername = normalizeTelegramUsername(
     forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.username,
   );
+  const directChannelUsername = normalizeTelegramUsername(
+    forwardedMessage.chat && forwardedMessage.chat.username,
+  );
   const configuredUsername = normalizeTelegramUsername(CHAT_NAME);
+  const isDirectChannelPost =
+    forwardedMessage.chat &&
+    forwardedMessage.chat.type === 'channel' &&
+    (directChannelUsername === configuredUsername || forwardedMessage.chat.id === +CHAT_ID);
 
   return (
     forwardedMessage.is_automatic_forward === true ||
-    (message.from && message.from.first_name === 'Telegram') ||
-    (forwardedUsername.length > 0 && forwardedUsername === configuredUsername)
+    (forwardedMessage.from && forwardedMessage.from.first_name === 'Telegram') ||
+    (forwardedUsername.length > 0 && forwardedUsername === configuredUsername) ||
+    isDirectChannelPost
   );
 };
 
-const withValidation = <
-  T extends NarrowedContext<
-    Context,
-    {
-      update_id: any;
-      message: TelegramPostMessage;
-    }
-  >,
->(
+const withValidation = <T extends Context>(
   ctx: T,
   cb: (ctx: T) => any,
 ) => {
+  const post = getContextPost(ctx);
+
   if (
-    ctx.chat.id !== +CHAT_ID ||
+    !post ||
+    !isConfiguredChat(ctx) ||
     ctx.chat.type === 'private' ||
-    !isTelegramChannelPost(ctx.message)
+    !isTelegramChannelPost(post)
   )
     return;
 
@@ -209,6 +234,10 @@ Bot.on('photo', (ctx) =>
 
     await addMessageToFeed(ctx.message, imageUrl);
   }),
+);
+
+Bot.on('channel_post', (ctx) =>
+  withValidation(ctx, (ctx) => addMessageToFeed(ctx.channelPost as any)),
 );
 
 export default {
