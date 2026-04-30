@@ -1,28 +1,55 @@
 import Feed from 'rss';
 import { writeFile } from 'fs/promises';
 
-const NOW = new Date();
 const RSS_FILE_PATH = 'public/rss.xml';
+const DEFAULT_ITEM_LIMIT = 50;
 
-const { PORT, AUTHOR, WEBSITE_HOST, GROUP_USERNAME } = process.env;
-const FEED_URL = `${WEBSITE_HOST}:${PORT}/rss.xml`;
-const COPYRIGHT = `${NOW.getFullYear()}: ${AUTHOR}`;
+const { AUTHOR, WEBSITE_HOST, GROUP_USERNAME } = process.env;
+const PUBLIC_WEBSITE_URL = WEBSITE_HOST.replace(/\/+$/, '');
+const FEED_URL = `${PUBLIC_WEBSITE_URL}/rss.xml`;
 
-const feed = new Feed({
-  language: 'en',
-  webMaster: AUTHOR,
-  feed_url: FEED_URL,
-  copyright: COPYRIGHT,
-  site_url: WEBSITE_HOST,
-  managingEditor: AUTHOR,
-  title: `${GROUP_USERNAME} RSS`,
-  pubDate: NOW.toLocaleString('en'),
-  description: `RSS Feed for Telegram channel: ${GROUP_USERNAME}`,
-});
+const getItemLimit = () => {
+  if (!process.env.RSS_ITEM_LIMIT) return DEFAULT_ITEM_LIMIT;
 
-export const addItem = async (item: Parameters<typeof feed['item']>[0]) => {
+  const limit = Number(process.env.RSS_ITEM_LIMIT);
+
+  if (!isFinite(limit) || limit < 0) return DEFAULT_ITEM_LIMIT;
+
+  return Math.floor(limit);
+};
+
+const createFeed = () => {
+  const now = new Date();
+
+  return new Feed({
+    language: 'en',
+    webMaster: AUTHOR,
+    feed_url: FEED_URL,
+    copyright: `${now.getFullYear()}: ${AUTHOR}`,
+    site_url: PUBLIC_WEBSITE_URL,
+    managingEditor: AUTHOR,
+    title: `${GROUP_USERNAME} RSS`,
+    pubDate: now.toLocaleString('en'),
+    description: `RSS Feed for Telegram channel: ${GROUP_USERNAME}`,
+  });
+};
+
+type FeedItem = Parameters<ReturnType<typeof createFeed>['item']>[0];
+
+const items: FeedItem[] = [];
+
+export const addItem = async (item: FeedItem) => {
   console.log('[FEED] Adding New Feed Item', item);
-  feed.item(item);
+
+  items.unshift(item);
+
+  const itemLimit = getItemLimit();
+
+  if (itemLimit > 0) items.splice(itemLimit);
+
+  const feed = createFeed();
+
+  items.forEach((feedItem) => feed.item(feedItem));
 
   await writeFile(RSS_FILE_PATH, feed.xml(), { flag: 'w+' });
 };

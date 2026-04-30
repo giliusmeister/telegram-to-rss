@@ -1,20 +1,77 @@
 import { type Context, type NarrowedContext, Telegraf, Telegram } from 'telegraf';
+import type { RequestHandler } from 'express';
 import type { Message, PhotoSize, Update } from 'telegraf/typings/core/types/typegram';
 
 import * as Feed from './feed';
 
 const CHAT_ID = process.env.GROUP_ID;
 const CHAT_NAME = process.env.GROUP_USERNAME;
+const WEBSITE_HOST = process.env.WEBSITE_HOST;
+const TITLE_MAX_LENGTH = 140;
 
 const Bot = new Telegraf(process.env.BOT_TOKEN);
 const TelegramClient = new Telegram(process.env.BOT_TOKEN);
+
+type TelegramPostMessage = Update.New & Update.NonChannel & (Message.TextMessage | Message.PhotoMessage);
+type TelegramPostMessageWithForward = TelegramPostMessage & {
+  forward_from_chat?: {
+    id?: number;
+    username?: string;
+  };
+  forward_from_message_id?: number;
+  is_automatic_forward?: boolean;
+};
+
+const formatDate = (date: Date) =>
+  date.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
+
+const normalizeTelegramUsername = (username?: string) =>
+  (username || '')
+    .trim()
+    .replace(/^(https?:\/\/)?t\.me\//i, '')
+    .replace(/^@/, '')
+    .replace(/\/.*$/, '');
+
+const normalizeWebhookPath = (path?: string) => {
+  if (!path) return null;
+
+  const normalizedPath = path.trim();
+
+  if (!normalizedPath) return null;
+
+  return normalizedPath.indexOf('/') === 0 ? normalizedPath : `/${normalizedPath}`;
+};
+
+const getWebhookPath = () => normalizeWebhookPath(process.env.TELEGRAM_WEBHOOK_PATH);
+
+const getWebhookURL = () => {
+  const webhookPath = getWebhookPath();
+
+  if (!webhookPath) return null;
+
+  return `${WEBSITE_HOST.replace(/\/+$/, '')}${webhookPath}`;
+};
+
+const isTelegramChannelPost = (message: TelegramPostMessage) => {
+  const forwardedMessage = message as TelegramPostMessageWithForward;
+  const forwardedUsername = normalizeTelegramUsername(
+    forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.username,
+  );
+  const configuredUsername = normalizeTelegramUsername(CHAT_NAME);
+
+  return (
+    forwardedMessage.is_automatic_forward === true ||
+    (message.from && message.from.first_name === 'Telegram') ||
+    (forwardedUsername.length > 0 && forwardedUsername === configuredUsername)
+  );
+};
 
 const withValidation = <
   T extends NarrowedContext<
     Context,
     {
       update_id: any;
-      message: Update.New & Update.NonChannel & (Message.TextMessage | Message.PhotoMessage);
+      message: TelegramPostMessage;
     }
   >,
 >(
@@ -24,7 +81,7 @@ const withValidation = <
   if (
     ctx.chat.id !== +CHAT_ID ||
     ctx.chat.type === 'private' ||
-    ctx.message.from.first_name !== 'Telegram'
+    !isTelegramChannelPost(ctx.message)
   )
     return;
 
@@ -32,42 +89,129 @@ const withValidation = <
 };
 
 const getImageURL = async (photos: PhotoSize[]): Promise<string> => {
-  const photoMeta = photos.at(-1);
+  const photoMeta = photos[photos.length - 1];
   const photoData = await TelegramClient.getFileLink(photoMeta.file_id);
 
   return photoData.toString();
 };
 
-Bot.on('text', (ctx) =>
-  withValidation(ctx, (ctx) => {
-    const description = ctx.message.text;
-    const date = new Date(ctx.message.date * 1000);
-    const url = `https://t.me/${CHAT_NAME}/${ctx.message.forward_from_message_id}`;
+const getPrivateChannelId = (chatId?: number) => {
+  if (!chatId) return null;
 
-    Feed.addItem({
-      url,
-      date,
-      description,
-      title: `${date.toLocaleDateString('en', { dateStyle: 'medium' })} on ${CHAT_NAME}`,
-    });
-  }),
+  const normalizedChatId = String(chatId);
+
+  if (normalizedChatId.indexOf('-100') !== 0) return null;
+
+  return normalizedChatId.slice(4);
+};
+
+const getFallbackTitle = (date: Date) => `${formatDate(date)} on ${CHAT_NAME}`;
+
+const truncateTitle = (title: string) => {
+  const normalizedTitle = title.replace(/\s+/g, ' ').trim();
+
+  if (normalizedTitle.length <= TITLE_MAX_LENGTH) return normalizedTitle;
+
+  return `${normalizedTitle.slice(0, TITLE_MAX_LENGTH - 3).trim()}...`;
+};
+
+const parseNews = (text: string, fallbackTitle: string) => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (!lines.length) {
+    return {
+      description: '',
+      title: fallbackTitle,
+    };
+  }
+
+  return {
+    description: lines.length > 1 ? lines.slice(1).join('\n\n') : lines[0],
+    title: truncateTitle(lines[0]),
+  };
+};
+
+const getMessageText = (message: TelegramPostMessage) =>
+  'text' in message ? message.text : message.caption || '';
+
+const getTelegramPermalink = (message: TelegramPostMessage) => {
+  const forwardedMessage = message as TelegramPostMessageWithForward;
+  const postId = forwardedMessage.forward_from_message_id || message.message_id;
+  const username = normalizeTelegramUsername(
+    (forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.username) || CHAT_NAME,
+  );
+
+  if (username) return `https://t.me/${username}/${postId}`;
+
+  const privateChannelId = getPrivateChannelId(
+    forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.id,
+  );
+
+  if (privateChannelId) return `https://t.me/c/${privateChannelId}/${postId}`;
+
+  return `https://t.me/${normalizeTelegramUsername(CHAT_NAME)}/${postId}`;
+};
+
+const buildDescription = (description: string, imageUrl?: string) =>
+  [description.trim(), imageUrl].filter((part) => Boolean(part)).join('\n\n');
+
+const addMessageToFeed = async (message: TelegramPostMessage, imageUrl?: string) => {
+  const date = new Date(message.date * 1000);
+  const url = getTelegramPermalink(message);
+  const parsedNews = parseNews(getMessageText(message), getFallbackTitle(date));
+
+  await Feed.addItem({
+    url,
+    guid: url,
+    date,
+    description: buildDescription(parsedNews.description, imageUrl),
+    title: parsedNews.title,
+  });
+};
+
+const getWebhookCallback = (): RequestHandler | null => {
+  const webhookPath = getWebhookPath();
+
+  if (!webhookPath) return null;
+
+  return Bot.webhookCallback(webhookPath, {
+    secretToken: process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN,
+  }) as RequestHandler;
+};
+
+const launch = async () => {
+  const webhookURL = getWebhookURL();
+
+  if (!webhookURL) {
+    await Bot.launch();
+    console.log('[TELEGRAM] Bot launched with long polling');
+    return;
+  }
+
+  const webhookOptions = process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN
+    ? { secret_token: process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN }
+    : {};
+
+  await Bot.telegram.setWebhook(webhookURL, webhookOptions);
+  console.log('[TELEGRAM] Webhook configured at', webhookURL);
+};
+
+Bot.on('text', (ctx) =>
+  withValidation(ctx, (ctx) => addMessageToFeed(ctx.message)),
 );
 
 Bot.on('photo', (ctx) =>
   withValidation(ctx, async (ctx) => {
-    const date = new Date(ctx.message.date * 1000);
-    const url = `https://t.me/${CHAT_NAME}/${ctx.message.forward_from_message_id}`;
-
     const imageUrl = await getImageURL(ctx.message.photo);
-    const description = `${ctx.message.caption ? `${ctx.message.caption} - ` : ''}${imageUrl}`;
 
-    Feed.addItem({
-      url,
-      date,
-      description,
-      title: `${date.toLocaleDateString('en', { dateStyle: 'medium' })} on ${CHAT_NAME}`,
-    });
+    await addMessageToFeed(ctx.message, imageUrl);
   }),
 );
 
-export default Bot;
+export default {
+  getWebhookCallback,
+  launch,
+};
