@@ -102,6 +102,14 @@ BOT_TOKEN=123456789:telegram-bot-token
 curl "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo"
 ```
 
+The repository also includes helper scripts that read `.env`:
+
+```sh
+chmod +x get-webhook.sh set-webhook.sh
+./set-webhook.sh
+./get-webhook.sh
+```
+
 Check the app heartbeat on the webhook path:
 
 ```sh

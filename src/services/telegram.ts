@@ -120,16 +120,6 @@ const getImageURL = async (photos: PhotoSize[]): Promise<string> => {
   return photoData.toString();
 };
 
-const getPrivateChannelId = (chatId?: number) => {
-  if (!chatId) return null;
-
-  const normalizedChatId = String(chatId);
-
-  if (normalizedChatId.indexOf('-100') !== 0) return null;
-
-  return normalizedChatId.slice(4);
-};
-
 const getFallbackTitle = (date: Date) => `${formatDate(date)} on ${CHAT_NAME}`;
 
 const truncateTitle = (title: string) => {
@@ -162,22 +152,13 @@ const parseNews = (text: string, fallbackTitle: string) => {
 const getMessageText = (message: TelegramPostMessage) =>
   'text' in message ? message.text : message.caption || '';
 
-const getTelegramPermalink = (message: TelegramPostMessage) => {
-  const forwardedMessage = message as TelegramPostMessageWithForward;
-  const postId = forwardedMessage.forward_from_message_id || message.message_id;
+const getTelegramPermalink = (message: any) => {
   const username = normalizeTelegramUsername(
-    (forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.username) || CHAT_NAME,
+    message.forward_from_chat?.username || message.chat?.username || process.env.GROUP_USERNAME,
   );
+  const messageId = message.forward_from_message_id || message.message_id;
 
-  if (username) return `https://t.me/${username}/${postId}`;
-
-  const privateChannelId = getPrivateChannelId(
-    forwardedMessage.forward_from_chat && forwardedMessage.forward_from_chat.id,
-  );
-
-  if (privateChannelId) return `https://t.me/c/${privateChannelId}/${postId}`;
-
-  return `https://t.me/${normalizeTelegramUsername(CHAT_NAME)}/${postId}`;
+  return `https://t.me/${username}/${messageId}`;
 };
 
 const buildDescription = (description: string, imageUrl?: string) =>
@@ -224,20 +205,21 @@ const launch = async () => {
   console.log('[TELEGRAM] Webhook configured at', webhookURL);
 };
 
-Bot.on('text', (ctx) =>
-  withValidation(ctx, (ctx) => addMessageToFeed(ctx.message)),
-);
+Bot.on('text', (ctx: any) => {
+  const message = ctx.message || ctx.channelPost;
+
+  console.log('[TELEGRAM] text update', message);
+
+  return withValidation(ctx, () => addMessageToFeed(message));
+});
 
 Bot.on('photo', (ctx) =>
-  withValidation(ctx, async (ctx) => {
-    const imageUrl = await getImageURL(ctx.message.photo);
+  withValidation(ctx, async () => {
+    const message = ctx.message || ctx.channelPost;
+    const imageUrl = await getImageURL(message.photo);
 
-    await addMessageToFeed(ctx.message, imageUrl);
+    await addMessageToFeed(message, imageUrl);
   }),
-);
-
-Bot.on('channel_post', (ctx) =>
-  withValidation(ctx, (ctx) => addMessageToFeed(ctx.channelPost as any)),
 );
 
 export default {
