@@ -151,7 +151,7 @@ sudo useradd --system --create-home --shell /usr/sbin/nologin telegram-rss
 sudo mkdir -p /opt/telegram-to-rss
 sudo chown telegram-rss:telegram-rss /opt/telegram-to-rss
 
-sudo -u telegram-rss git clone https://github.com/<your-user>/telegram-to-rss.git /opt/telegram-to-rss
+sudo -u telegram-rss git clone https://github.com/giliusmeister/telegram-to-rss.git /opt/telegram-to-rss
 cd /opt/telegram-to-rss
 
 sudo -u telegram-rss npm install
