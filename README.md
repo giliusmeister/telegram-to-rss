@@ -339,6 +339,70 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+## Webhook returns 301 Moved Permanently
+
+If `getWebhookInfo` shows:
+
+```json
+"last_error_message": "Wrong response from the webhook: 301 Moved Permanently"
+```
+
+Telegram is receiving a redirect from nginx. Telegram webhooks must return `200 OK` directly and must not redirect.
+
+Check:
+
+```sh
+curl -i -X POST https://your-domain.com/telegram/webhook/YOUR_SECRET_PATH \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+If `TELEGRAM_WEBHOOK_SECRET_TOKEN` is set, include it too:
+
+```sh
+curl -i -X POST https://your-domain.com/telegram/webhook/YOUR_SECRET_PATH \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: YOUR_SECRET_TOKEN" \
+  -d '{}'
+```
+
+Expected result:
+
+```http
+HTTP/2 200
+```
+
+Fix nginx by adding an exact webhook location, for example:
+
+```nginx
+# Put this exact location before broader `location /` or `location /telegram/webhook/` blocks.
+# The path must match TELEGRAM_WEBHOOK_PATH exactly, with no added trailing slash.
+location = /telegram/webhook/YOUR_SECRET_PATH {
+    proxy_pass http://127.0.0.1:4444/telegram/webhook/YOUR_SECRET_PATH;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Then reload nginx:
+
+```sh
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Reset webhook:
+
+```sh
+./reset-webhook.sh
+./get-webhook.sh
+```
+
+Main rule: the webhook URL must answer `200 OK` directly, with no `301`/`302`, no added slash, and no `http -> https` redirect.
+
 If you use Let's Encrypt, install Certbot and issue a certificate after DNS points to the server:
 
 ```sh
