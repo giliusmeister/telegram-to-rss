@@ -191,7 +191,10 @@ const getTelegramGuid = (message: any) => {
 const buildDescription = (description: string, sourceUrl: string, imageUrl?: string) => {
   const parts = [description.trim(), imageUrl];
 
-  if (INCLUDE_SOURCE_LINK) parts.push(`${SOURCE_LINK_LABEL}: <a href="${sourceUrl}">${sourceUrl}</a>`);
+  if (INCLUDE_SOURCE_LINK)
+    parts.push(
+      `<br/>${SOURCE_LINK_LABEL}: <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${sourceUrl}</a>`,
+    );
 
   return parts.filter((part) => Boolean(part)).join('\n\n');
 };
