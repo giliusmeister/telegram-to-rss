@@ -82,7 +82,7 @@ const writeFeed = async () => {
 
   items.forEach((feedItem) => feed.item(feedItem));
 
-  await writeFile(RSS_FILE_PATH, feed.xml(), { flag: 'w+' });
+  await writeFile(RSS_FILE_PATH, feed.xml({ indent: true }), { flag: 'w+' });
 };
 
 export const initialize = async () => {
