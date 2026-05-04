@@ -9,9 +9,10 @@ const CHAT_ID = process.env.GROUP_ID;
 const CHAT_NAME = process.env.GROUP_USERNAME;
 const WEBSITE_HOST = process.env.WEBSITE_HOST;
 const TITLE_MAX_LENGTH = 140;
-const INCLUDE_SOURCE_LINK =
-  (process.env.RSS_INCLUDE_SOURCE_LINK || '').toLowerCase() === 'true' ||
-  process.env.RSS_INCLUDE_SOURCE_LINK === '1';
+
+const isTruthy = (value?: string) => ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
+
+const INCLUDE_SOURCE_LINK = isTruthy(process.env.RSS_INCLUDE_SOURCE_LINK);
 const RSS_LANGUAGE = (process.env.RSS_LANGUAGE || 'en').toLowerCase();
 const SOURCE_LINK_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Ссылка на источник' : 'Link to Source';
 
@@ -190,7 +191,7 @@ const getTelegramGuid = (message: any) => {
 const buildDescription = (description: string, sourceUrl: string, imageUrl?: string) => {
   const parts = [description.trim(), imageUrl];
 
-  if (INCLUDE_SOURCE_LINK) parts.push(`${SOURCE_LINK_LABEL}: ${sourceUrl}`);
+  if (INCLUDE_SOURCE_LINK) parts.push(`${SOURCE_LINK_LABEL}: <a href="${sourceUrl}">${sourceUrl}</a>`);
 
   return parts.filter((part) => Boolean(part)).join('\n\n');
 };
@@ -221,6 +222,10 @@ const getWebhookCallback = (): RequestHandler | null => {
 
 const launch = async () => {
   const webhookURL = getWebhookURL();
+
+  console.log('[TELEGRAM] RSS_INCLUDE_SOURCE_LINK:', INCLUDE_SOURCE_LINK);
+  console.log('[TELEGRAM] RSS_LANGUAGE:', RSS_LANGUAGE);
+  console.log('[TELEGRAM] SOURCE_LINK_LABEL:', SOURCE_LINK_LABEL);
 
   if (!webhookURL) {
     await Bot.launch();
