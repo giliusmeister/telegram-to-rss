@@ -9,6 +9,11 @@ const CHAT_ID = process.env.GROUP_ID;
 const CHAT_NAME = process.env.GROUP_USERNAME;
 const WEBSITE_HOST = process.env.WEBSITE_HOST;
 const TITLE_MAX_LENGTH = 140;
+const INCLUDE_SOURCE_LINK =
+  (process.env.RSS_INCLUDE_SOURCE_LINK || '').toLowerCase() === 'true' ||
+  process.env.RSS_INCLUDE_SOURCE_LINK === '1';
+const RSS_LANGUAGE = (process.env.RSS_LANGUAGE || 'en').toLowerCase();
+const SOURCE_LINK_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Ссылка на источник' : 'Link to Source';
 
 const Bot = new Telegraf(process.env.BOT_TOKEN);
 const TelegramClient = new Telegram(process.env.BOT_TOKEN);
@@ -182,8 +187,13 @@ const getTelegramGuid = (message: any) => {
   return `telegram:${digest}`;
 };
 
-const buildDescription = (description: string, imageUrl?: string) =>
-  [description.trim(), imageUrl].filter((part) => Boolean(part)).join('\n\n');
+const buildDescription = (description: string, sourceUrl: string, imageUrl?: string) => {
+  const parts = [description.trim(), imageUrl];
+
+  if (INCLUDE_SOURCE_LINK) parts.push(`${SOURCE_LINK_LABEL}: ${sourceUrl}`);
+
+  return parts.filter((part) => Boolean(part)).join('\n\n');
+};
 
 const addMessageToFeed = async (message: TelegramPostMessage, imageUrl?: string) => {
   const date = new Date(message.date * 1000);
@@ -194,7 +204,7 @@ const addMessageToFeed = async (message: TelegramPostMessage, imageUrl?: string)
     url,
     guid: getTelegramGuid(message),
     date,
-    description: buildDescription(parsedNews.description, imageUrl),
+    description: buildDescription(parsedNews.description, url, imageUrl),
     title: parsedNews.title,
   });
 };

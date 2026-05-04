@@ -14,6 +14,7 @@ declare namespace NodeJS {
     RSS_LANGUAGE?: string;
     RSS_ITEMS_FILE_PATH?: string;
     RSS_GUID_SECRET?: string;
+    RSS_INCLUDE_SOURCE_LINK?: string;
 
     // Server
     PORT: string;

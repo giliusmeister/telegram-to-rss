@@ -163,6 +163,7 @@ _Note: You need to create separate `.env.{NODE_ENV}` files for each environment(
 |RSS_LANGUAGE|String|RSS feed language code, defaults to `en`; use `ru` for Russian feeds|
 |RSS_ITEMS_FILE_PATH|String|Path to persisted RSS items JSON, defaults to `data/rss-items.json`|
 |RSS_GUID_SECRET|String|Optional HMAC secret for stable non-permalink RSS item GUIDs; defaults to `BOT_TOKEN`|
+|RSS_INCLUDE_SOURCE_LINK|Boolean (`true`/`false`)|Include `Ссылка на источник: ...` in item description, defaults to `false`|
 
 ## Ubuntu Server Deployment
 
@@ -219,6 +220,7 @@ RSS_ITEM_LIMIT=50
 RSS_LANGUAGE=ru
 RSS_ITEMS_FILE_PATH=data/rss-items.json
 RSS_GUID_SECRET=replace-with-random-secret
+RSS_INCLUDE_SOURCE_LINK=false
 ```
 
 Create `/etc/systemd/system/telegram-to-rss.service`:
