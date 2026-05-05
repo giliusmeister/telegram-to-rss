@@ -8,13 +8,17 @@ import * as Feed from './feed';
 const CHAT_ID = process.env.GROUP_ID;
 const CHAT_NAME = process.env.GROUP_USERNAME;
 const WEBSITE_HOST = process.env.WEBSITE_HOST;
-const TITLE_MAX_LENGTH = 140;
+const TITLE_MAX_LENGTH = 80;
+const TITLE_MIN_LENGTH = 8;
 
 const isTruthy = (value?: string) => ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
 
 const INCLUDE_SOURCE_LINK = isTruthy(process.env.RSS_INCLUDE_SOURCE_LINK);
 const RSS_LANGUAGE = (process.env.RSS_LANGUAGE || 'en').toLowerCase();
 const SOURCE_LINK_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Ссылка на источник' : 'Link to Source';
+const FALLBACK_UPDATE_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Новость от' : 'Update at';
+const FALLBACK_PHOTO_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Фото' : 'Photo';
+const FALLBACK_MEDIA_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Медиа' : 'Media';
 
 const Bot = new Telegraf(process.env.BOT_TOKEN);
 const TelegramClient = new Telegram(process.env.BOT_TOKEN);
@@ -37,8 +41,8 @@ type TelegramPostMessageWithForward = TelegramPostMessage & {
   is_automatic_forward?: boolean;
 };
 
-const formatDate = (date: Date) =>
-  date.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
+const formatDateTime = (date: Date) =>
+  date.toISOString().slice(0, 16).replace('T', ' ');
 
 const normalizeTelegramUsername = (username?: string) =>
   (username || '')
@@ -127,17 +131,37 @@ const getImageURL = async (photos: PhotoSize[]): Promise<string> => {
   return photoData.toString();
 };
 
-const getFallbackTitle = (date: Date) => `${formatDate(date)} on ${CHAT_NAME}`;
-
 const truncateTitle = (title: string) => {
   const normalizedTitle = title.replace(/\s+/g, ' ').trim();
 
   if (normalizedTitle.length <= TITLE_MAX_LENGTH) return normalizedTitle;
 
-  return `${normalizedTitle.slice(0, TITLE_MAX_LENGTH - 3).trim()}...`;
+  const sliced = normalizedTitle.slice(0, TITLE_MAX_LENGTH - 1);
+  const lastSpaceIndex = sliced.lastIndexOf(' ');
+  const safeSlice = lastSpaceIndex > TITLE_MIN_LENGTH ? sliced.slice(0, lastSpaceIndex) : sliced;
+
+  return `${safeSlice.trim()}...`;
 };
 
-const parseNews = (text: string, fallbackTitle: string) => {
+const buildTitle = (message: TelegramPostMessage, text: string, date: Date) => {
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  const withoutLinks = (firstLine || '')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (withoutLinks.length >= TITLE_MIN_LENGTH) return truncateTitle(withoutLinks);
+
+  if ('photo' in message) return `${FALLBACK_PHOTO_LABEL} ${formatDateTime(date)}`;
+  if (!text.trim()) return `${FALLBACK_MEDIA_LABEL} ${formatDateTime(date)}`;
+
+  return `${FALLBACK_UPDATE_LABEL} ${formatDateTime(date)}`;
+};
+
+const parseNews = (text: string, message: TelegramPostMessage, date: Date) => {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -146,13 +170,13 @@ const parseNews = (text: string, fallbackTitle: string) => {
   if (!lines.length) {
     return {
       description: '',
-      title: fallbackTitle,
+      title: buildTitle(message, text, date),
     };
   }
 
   return {
     description: lines.length > 1 ? lines.slice(1).join('\n\n') : lines[0],
-    title: truncateTitle(lines[0]),
+    title: buildTitle(message, text, date),
   };
 };
 
@@ -189,20 +213,20 @@ const getTelegramGuid = (message: any) => {
 };
 
 const buildDescription = (description: string, sourceUrl: string, imageUrl?: string) => {
-  const parts = [description.trim(), imageUrl];
+  let result = description.trim();
+
+  if (imageUrl) result = `${result}<br/><br/>${imageUrl}`;
 
   if (INCLUDE_SOURCE_LINK)
-    parts.push(
-      `<br/>${SOURCE_LINK_LABEL}: <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${sourceUrl}</a>`,
-    );
+    result = `${result}<br/><br/>${SOURCE_LINK_LABEL}: <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${sourceUrl}</a>`;
 
-  return parts.filter((part) => Boolean(part)).join('\n\n');
+  return result;
 };
 
 const addMessageToFeed = async (message: TelegramPostMessage, imageUrl?: string) => {
   const date = new Date(message.date * 1000);
   const url = getTelegramPermalink(message);
-  const parsedNews = parseNews(getMessageText(message), getFallbackTitle(date));
+  const parsedNews = parseNews(getMessageText(message), message, date);
 
   await Feed.addItem({
     url,
