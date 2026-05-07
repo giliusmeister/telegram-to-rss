@@ -4,6 +4,7 @@ declare namespace NodeJS {
     GROUP_ID: string;
     BOT_TOKEN: string;
     GROUP_USERNAME: string;
+    TELEGRAM_SOURCE_MODE?: 'both' | 'channel' | 'discussion';
     TELEGRAM_WEBHOOK_PATH?: string;
     TELEGRAM_WEBHOOK_SECRET_TOKEN?: string;
 

@@ -10,6 +10,8 @@ const CHAT_NAME = process.env.GROUP_USERNAME;
 const WEBSITE_HOST = process.env.WEBSITE_HOST;
 const TITLE_MAX_LENGTH = 80;
 const TITLE_MIN_LENGTH = 8;
+const VALID_SOURCE_MODES = ['both', 'channel', 'discussion'] as const;
+type SourceMode = (typeof VALID_SOURCE_MODES)[number];
 
 const isTruthy = (value?: string) => ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
 
@@ -19,6 +21,11 @@ const SOURCE_LINK_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Ссылка на 
 const FALLBACK_UPDATE_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Новость от' : 'Update at';
 const FALLBACK_PHOTO_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Фото' : 'Photo';
 const FALLBACK_MEDIA_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Медиа' : 'Media';
+const SOURCE_MODE: SourceMode = VALID_SOURCE_MODES.includes(
+  (process.env.TELEGRAM_SOURCE_MODE || '').trim().toLowerCase() as SourceMode,
+)
+  ? ((process.env.TELEGRAM_SOURCE_MODE || '').trim().toLowerCase() as SourceMode)
+  : 'both';
 
 const Bot = new Telegraf(process.env.BOT_TOKEN);
 const TelegramClient = new Telegram(process.env.BOT_TOKEN);
@@ -253,6 +260,7 @@ const launch = async () => {
   console.log('[TELEGRAM] RSS_INCLUDE_SOURCE_LINK:', INCLUDE_SOURCE_LINK);
   console.log('[TELEGRAM] RSS_LANGUAGE:', RSS_LANGUAGE);
   console.log('[TELEGRAM] SOURCE_LINK_LABEL:', SOURCE_LINK_LABEL);
+  console.log('[TELEGRAM] SOURCE_MODE:', SOURCE_MODE);
 
   if (!webhookURL) {
     await Bot.launch();
@@ -269,6 +277,8 @@ const launch = async () => {
 };
 
 Bot.use((ctx: any, next) => {
+  if (SOURCE_MODE === 'discussion') return next();
+
   const post = ctx.update.channel_post;
 
   if (post?.text || post?.photo) {
@@ -287,19 +297,23 @@ Bot.use((ctx: any, next) => {
 });
 
 Bot.on('text', (ctx: any) => {
+  if (SOURCE_MODE === 'channel') return;
+
   const message = ctx.message || ctx.channelPost;
 
   return withValidation(ctx, () => addMessageToFeed(message));
 });
 
-Bot.on('photo', (ctx) =>
-  withValidation(ctx, async () => {
+Bot.on('photo', (ctx) => {
+  if (SOURCE_MODE === 'channel') return;
+
+  return withValidation(ctx, async () => {
     const message = ctx.message || ctx.channelPost;
     const imageUrl = await getImageURL(message.photo);
 
     await addMessageToFeed(message, imageUrl);
-  }),
-);
+  });
+});
 
 export default {
   getWebhookCallback,

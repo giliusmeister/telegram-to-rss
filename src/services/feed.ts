@@ -98,15 +98,16 @@ const addItemUnsafe = async (item: FeedItem) => {
   );
 
   if (isDuplicate) {
-    console.log('[FEED] Skipping Duplicate Feed Item', {
+    console.log('[FEED] Skip duplicate item', {
       guid: item.guid,
-      title: item.title,
       url: item.url,
     });
     return;
   }
 
-  console.log('[FEED] Adding New Feed Item', item);
+  console.log(
+    `[FEED] Added item guid=${item.guid || 'n/a'} url=${item.url || 'n/a'} date=${item.date instanceof Date ? item.date.toISOString() : String(item.date || 'n/a')}`,
+  );
 
   items.unshift(item);
   applyItemLimit();

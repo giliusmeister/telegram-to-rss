@@ -155,6 +155,7 @@ _Note: You need to create separate `.env.{NODE_ENV}` files for each environment(
 |GROUP_ID|String|Linked discussion group chat ID, usually starts with `-100`|
 |BOT_TOKEN|String|Your Bot's API key|
 |GROUP_USERNAME|String|Your Channel Username|
+|TELEGRAM_SOURCE_MODE|String|Telegram source mode: `both` (default), `channel` (only `channel_post`), or `discussion` (only forwarded discussion messages)|
 |TELEGRAM_WEBHOOK_PATH|String|Optional public webhook path; enables webhook mode when set|
 |TELEGRAM_WEBHOOK_SECRET_TOKEN|String|Optional Telegram webhook secret token|
 |AUTHOR|String|RSS Feed Author Name|
@@ -164,6 +165,23 @@ _Note: You need to create separate `.env.{NODE_ENV}` files for each environment(
 |RSS_ITEMS_FILE_PATH|String|Path to persisted RSS items JSON, defaults to `data/rss-items.json`|
 |RSS_GUID_SECRET|String|Optional HMAC secret for stable non-permalink RSS item GUIDs; defaults to `BOT_TOKEN`|
 |RSS_INCLUDE_SOURCE_LINK|Boolean (`true`/`false`)|Include `Ссылка на источник: ...` in item description, defaults to `false`|
+
+## RSS Item Formatting
+
+Each RSS item title is built from Telegram message text with the following rules:
+
+1. Use the first non-empty line.
+2. Remove URLs and normalize extra spaces.
+3. Truncate to `80` characters, preferring a word boundary.
+4. If the cleaned text is too short, use a localized fallback title by `RSS_LANGUAGE`:
+   - `ru`: `Новость от YYYY-MM-DD HH:mm`, `Фото YYYY-MM-DD HH:mm`, `Медиа YYYY-MM-DD HH:mm`
+   - default (`en`): `Update at YYYY-MM-DD HH:mm`, `Photo YYYY-MM-DD HH:mm`, `Media YYYY-MM-DD HH:mm`
+
+When `RSS_INCLUDE_SOURCE_LINK=true`, the item `<description>` appends a source line using HTML:
+
+- two line breaks as `<br/><br/>`
+- a clickable `<a href="...">...</a>` link
+- `target="_blank"` and `rel="noopener noreferrer"`
 
 ## Ubuntu Server Deployment
 
@@ -211,6 +229,7 @@ PORT=4444
 GROUP_ID=-1001234567890
 BOT_TOKEN=123456789:telegram-bot-token
 GROUP_USERNAME=my_channel
+TELEGRAM_SOURCE_MODE=both
 TELEGRAM_WEBHOOK_PATH=/telegram/webhook/replace-with-random-path
 TELEGRAM_WEBHOOK_SECRET_TOKEN=replace-with-random-secret
 
