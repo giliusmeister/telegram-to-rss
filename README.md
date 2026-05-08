@@ -71,6 +71,19 @@ curl "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates"
 
 Find `message.chat.id` in the response and use it as `GROUP_ID`. It usually looks like `-1001234567890`.
 
+To get direct channel metadata from the latest update (`channel_post`), publish a test post in the channel and run:
+
+```sh
+BOT_TOKEN=123456789:telegram-bot-token
+curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=-1&allowed_updates=%5B%22channel_post%22%5D" \
+  | jq '.result[]?.channel_post?.chat | { id, username, title, type }'
+```
+
+This output gives:
+- `id` -> set as `GROUP_ID` (for example `-1001457610293`)
+- `username` -> set as `GROUP_USERNAME` (without `@`)
+- `title` -> human-readable channel name
+
 If `getUpdates` returns an error about an active webhook, delete the existing webhook first:
 
 ```sh
@@ -165,6 +178,15 @@ _Note: You need to create separate `.env.{NODE_ENV}` files for each environment(
 |RSS_ITEMS_FILE_PATH|String|Path to persisted RSS items JSON, defaults to `data/rss-items.json`|
 |RSS_GUID_SECRET|String|Optional HMAC secret for stable non-permalink RSS item GUIDs; defaults to `BOT_TOKEN`|
 |RSS_INCLUDE_SOURCE_LINK|Boolean (`true`/`false`)|Include `Ссылка на источник: ...` in item description, defaults to `false`|
+|RSS_LINKIFY_URLS|Boolean (`true`/`false`)|Convert plain `http(s)` links in Telegram text to clickable HTML links in RSS description, defaults to `false`|
+
+### Example: only channel messages
+
+If you want to publish only direct channel posts (`channel_post`) and ignore discussion-group forwards/replies, set:
+
+```env
+TELEGRAM_SOURCE_MODE=channel
+```
 
 ## RSS Item Formatting
 
@@ -182,6 +204,8 @@ When `RSS_INCLUDE_SOURCE_LINK=true`, the item `<description>` appends a source l
 - two line breaks as `<br/><br/>`
 - a clickable `<a href="...">...</a>` link
 - `target="_blank"` and `rel="noopener noreferrer"`
+
+When `RSS_LINKIFY_URLS=true`, plain links inside Telegram text (for example `https://...`) are converted to clickable `<a href="...">...</a>` links.
 
 ## Ubuntu Server Deployment
 
@@ -240,6 +264,7 @@ RSS_LANGUAGE=ru
 RSS_ITEMS_FILE_PATH=data/rss-items.json
 RSS_GUID_SECRET=replace-with-random-secret
 RSS_INCLUDE_SOURCE_LINK=false
+RSS_LINKIFY_URLS=false
 ```
 
 Create `/etc/systemd/system/telegram-to-rss.service`:
@@ -451,5 +476,5 @@ sudo systemctl restart telegram-to-rss
 ## TODOs
 
 - [x] Make RSS feed metadata configurable
-- [ ] Persist the auto-generated RSS Feed so stopping/restarting the process does not override it.
-- [ ] Make Feed generation configurable(Currently only the messages from the Channel admin are allowed, but some may want to also include discussion messages from other members(i.e. replies)).
+- [x] Persist the auto-generated RSS Feed so stopping/restarting the process does not override it.
+- [x] Make Feed generation configurable (supports `TELEGRAM_SOURCE_MODE=both|channel|discussion`).

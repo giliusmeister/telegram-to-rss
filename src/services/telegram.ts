@@ -16,6 +16,7 @@ type SourceMode = (typeof VALID_SOURCE_MODES)[number];
 const isTruthy = (value?: string) => ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
 
 const INCLUDE_SOURCE_LINK = isTruthy(process.env.RSS_INCLUDE_SOURCE_LINK);
+const LINKIFY_URLS = isTruthy(process.env.RSS_LINKIFY_URLS);
 const RSS_LANGUAGE = (process.env.RSS_LANGUAGE || 'en').toLowerCase();
 const SOURCE_LINK_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Ссылка на источник' : 'Link to Source';
 const FALLBACK_UPDATE_LABEL = RSS_LANGUAGE.indexOf('ru') === 0 ? 'Новость от' : 'Update at';
@@ -222,6 +223,16 @@ const getTelegramGuid = (message: any) => {
 const buildDescription = (description: string, sourceUrl: string, imageUrl?: string) => {
   let result = description.trim();
 
+  if (LINKIFY_URLS) {
+    result = result.replace(/https?:\/\/[^\s<]+/g, (rawUrl) => {
+      const match = rawUrl.match(/^(.*?)([),.!?;:]*)$/);
+      const cleanUrl = match ? match[1] : rawUrl;
+      const trailing = match ? match[2] : '';
+
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailing}`;
+    });
+  }
+
   if (imageUrl) result = `${result}<br/><br/>${imageUrl}`;
 
   if (INCLUDE_SOURCE_LINK)
@@ -258,6 +269,7 @@ const launch = async () => {
   const webhookURL = getWebhookURL();
 
   console.log('[TELEGRAM] RSS_INCLUDE_SOURCE_LINK:', INCLUDE_SOURCE_LINK);
+  console.log('[TELEGRAM] RSS_LINKIFY_URLS:', LINKIFY_URLS);
   console.log('[TELEGRAM] RSS_LANGUAGE:', RSS_LANGUAGE);
   console.log('[TELEGRAM] SOURCE_LINK_LABEL:', SOURCE_LINK_LABEL);
   console.log('[TELEGRAM] SOURCE_MODE:', SOURCE_MODE);
